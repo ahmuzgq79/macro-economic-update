@@ -679,6 +679,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .controls button{background:var(--panel2);color:var(--muted);border:1px solid var(--border);
        padding:6px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600}
   .controls button.active{background:var(--accent);color:#04101f;border-color:var(--accent)}
+  .rangebar{display:flex;align-items:center;gap:12px;margin:2px 0}
+  .rangebar .controls{margin-left:0}
+  .rblabel{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700}
   .section{padding:8px 28px 0}
   .section h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;
               color:var(--muted);margin:22px 0 10px;font-weight:700}
@@ -749,12 +752,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <header>
   <h1>📊 Macro Economic Dashboard</h1>
   <span class="sub" id="updated"></span>
-  <div class="controls" id="ranges">
-    <button data-r="365">1Y</button>
-    <button data-r="1825">5Y</button>
-    <button data-r="3650">10Y</button>
-    <button data-r="0" class="active">Max</button>
-  </div>
 </header>
 <div id="app"></div>
 <footer>
@@ -800,6 +797,7 @@ function render(){
     (PAYLOAD.indicators.length + (PAYLOAD.themes||[]).length) + " series live";
 
   renderOutlook();
+  renderRangeBar();
   renderThemes();
 
   const sections = [];
@@ -814,6 +812,26 @@ function render(){
     app.appendChild(wrap);
   });
   PAYLOAD.indicators.forEach(drawChart);
+}
+
+function renderRangeBar(){
+  const app = document.getElementById("app");
+  const bar = document.createElement("div");
+  bar.className = "section";
+  bar.innerHTML = `
+    <div class="rangebar">
+      <span class="rblabel">Time range</span>
+      <div class="controls" id="ranges">
+        <button data-r="365">1Y</button>
+        <button data-r="1825">5Y</button>
+        <button data-r="3650">10Y</button>
+        <button data-r="0">Max</button>
+      </div>
+    </div>`;
+  bar.querySelectorAll("#ranges button").forEach(b=>{
+    if(+b.dataset.r === RANGE) b.classList.add("active");
+  });
+  app.appendChild(bar);
 }
 
 function renderOutlook(){
@@ -955,11 +973,10 @@ function drawChart(ind){
   });
 }
 
-document.getElementById("ranges").addEventListener("click", e=>{
-  if(e.target.tagName!=="BUTTON") return;
-  RANGE = +e.target.dataset.r;
-  document.querySelectorAll("#ranges button").forEach(b=>b.classList.remove("active"));
-  e.target.classList.add("active");
+document.addEventListener("click", e=>{
+  const btn = e.target.closest("#ranges button");
+  if(!btn) return;
+  RANGE = +btn.dataset.r;
   render();
 });
 
