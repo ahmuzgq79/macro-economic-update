@@ -758,8 +758,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </header>
 <div id="app"></div>
 <footer>
-  Data: FRED (St. Louis Fed), Yahoo Finance, multpl.com. For analysis only, not investment advice.
-  Re-run <code>build_dashboard.py</code> to refresh.
+  Data: FRED (St. Louis Fed), Yahoo Finance, and multpl.com. This analysis is for informational purposes only and does not constitute any investment advice. AI can make mistakes. Always verify the information.
 </footer>
 
 <script>
