@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+update_log.txt
+gpr.xls
+run_monthly_update.bat
