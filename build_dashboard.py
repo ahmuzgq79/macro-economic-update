@@ -27,52 +27,41 @@ from html import unescape
 HERE = __import__("os").path.dirname(__import__("os").path.abspath(__file__))
 OUT = __import__("os").path.join(HERE, "dashboard.html")
 
-UA = {
-    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
-    "Accept": "text/csv,application/json,text/plain,*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    # Force a fresh connection per request: reused keep-alive sockets are what
-    # produced the intermittent WinError 10054 resets under FRED throttling.
-    "Connection": "close",
-}
+# Keep the UA simple: impersonating a full browser makes Akamai (FRED's CDN)
+# expect a matching browser TLS fingerprint and reset the connection.
+UA = {"User-Agent": "Mozilla/5.0 (compatible; MacroDashboard/1.0)"}
 
 
-_PREFER_CURL = False  # flips true once urllib proves throttled this session
-
-
-def _get(url, headers=None, timeout=40, retries=2):
+def _get(url, headers=None, timeout=40, retries=4):
     return _get_bytes(url, headers, timeout, retries).decode("utf-8", "replace")
 
 
-def _curl_get(url, timeout):
-    """Fallback fetch via system curl. Some hosts (Akamai/FRED under load)
-    tarpit urllib's TLS fingerprint while letting curl through, so this keeps
-    the build working when urllib is throttled."""
+def _curl_get(url, timeout, retries=4):
+    """Fetch via system curl. Preferred over urllib because on some networks
+    urllib's TLS handshake to FRED's CDN is reset while curl (system TLS)
+    succeeds. Retries to ride out intermittent connection resets."""
     exe = shutil.which("curl")
     if not exe:
         return None
-    try:
-        p = subprocess.run(
-            [exe, "-sSL", "--compressed", "-m", str(int(timeout)),
-             "-A", UA["User-Agent"], url],
-            capture_output=True, timeout=timeout + 10,
-        )
-        if p.returncode == 0 and p.stdout:
-            return p.stdout
-    except Exception:  # noqa: BLE001
-        return None
+    for attempt in range(retries):
+        try:
+            p = subprocess.run(
+                [exe, "-sSL", "-m", str(int(timeout)), "-A", UA["User-Agent"], url],
+                capture_output=True, timeout=timeout + 10,
+            )
+            if p.returncode == 0 and p.stdout:
+                return p.stdout
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(1.2 * (attempt + 1))
     return None
 
 
-def _get_bytes(url, headers=None, timeout=40, retries=2):
-    global _PREFER_CURL
-    # Once urllib has proven throttled this session, skip it and use curl first.
-    if _PREFER_CURL:
-        data = _curl_get(url, timeout)
-        if data is not None:
-            return data
-        _PREFER_CURL = False  # curl failing too — fall back to urllib below
+def _get_bytes(url, headers=None, timeout=40, retries=4):
+    # curl first (reliable here), urllib as fallback for environments without curl.
+    data = _curl_get(url, timeout, retries)
+    if data is not None:
+        return data
     last = None
     for attempt in range(retries):
         try:
@@ -81,14 +70,8 @@ def _get_bytes(url, headers=None, timeout=40, retries=2):
                 return r.read()
         except Exception as e:  # noqa: BLE001
             last = e
-            time.sleep(min(2.0 * (attempt + 1), 8))
-    # urllib exhausted — try the system curl (different TLS fingerprint). If it
-    # works, stick with curl for the rest of the run so we don't wait on urllib.
-    data = _curl_get(url, timeout)
-    if data is not None:
-        _PREFER_CURL = True
-        return data
-    raise last
+            time.sleep(min(1.5 * (attempt + 1), 8))
+    raise last if last else RuntimeError("fetch failed: " + url)
 
 
 # --------------------------------------------------------------------------- #
